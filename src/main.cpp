@@ -19,11 +19,14 @@ OneButton button(BTN_PIN, true);
 CRGB leds;
 
 uint8_t currentFileIndex;
+uint8_t currentRotation;
 File currentFile;
 uint32_t currentFrameDelay;
 uint32_t nextFrameTime;
 bool warningLightOn;
 
+const int eepromAddress_FileIndex = 0;
+const int eepromAddress_Rotation = 1;
 
 bool RenderJPEGBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
 {
@@ -34,12 +37,20 @@ bool RenderJPEGBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bit
 void nextFile()
 {
     currentFileIndex = (currentFileIndex + 1) % mjpgFileNames.size();
-    EEPROM.write(0, currentFileIndex);
+    EEPROM.write(eepromAddress_FileIndex, currentFileIndex);
     EEPROM.commit();
     currentFile.close();
     currentFile = SD_MMC.open(mjpgFileNames[currentFileIndex]);
     currentFrameDelay = 1000/mjpgFrameRates[currentFileIndex];
     nextFrameTime = millis();
+}
+
+void rotate()
+{
+    currentRotation ^= 1;
+    EEPROM.write(eepromAddress_Rotation, currentRotation);
+    EEPROM.commit();
+    screen.setRotation(1 + currentRotation*2);
 }
 
 int getFPS(const String& fileName)
@@ -81,8 +92,12 @@ void setup()
 
     Serial.begin(115200);
 
+    EEPROM.begin(2);
+
+    currentRotation = EEPROM.read(eepromAddress_Rotation) % 2;
+
     screen.begin();
-    screen.setRotation(1);
+    screen.setRotation(1 + currentRotation*2);
     screen.setSwapBytes(true); // We need to swap the colour bytes (endianess)
     screen.fillScreen(TFT_BLACK);
 
@@ -91,8 +106,6 @@ void setup()
 
     SD_MMC.setPins(SD_MMC_CLK_PIN, SD_MMC_CMD_PIN, SD_MMC_D0_PIN, SD_MMC_D1_PIN, SD_MMC_D2_PIN, SD_MMC_D3_PIN);
     SD_MMC.begin();
-
-    EEPROM.begin(1);
 
     FastLED.addLeds<APA102, LED_DI_PIN, LED_CI_PIN, BGR>(&leds, 1);
 
@@ -111,13 +124,14 @@ void setup()
         }
     }
 
-    currentFileIndex = EEPROM.read(0) % mjpgFileNames.size();
+    currentFileIndex = EEPROM.read(eepromAddress_FileIndex) % mjpgFileNames.size();
 
     currentFile = SD_MMC.open(mjpgFileNames[currentFileIndex]);
     currentFrameDelay = 1000/mjpgFrameRates[currentFileIndex];
     nextFrameTime = millis();
 
     button.attachClick(nextFile);
+    button.attachLongPressStart(rotate);
 
     leds = CRGB(0,0,0);
     FastLED.show();
